@@ -1,0 +1,44 @@
+{
+  "name": "trading-competition-bot",
+  "version": "1.0.0",
+  "description": "Discord Trading Competition Bot — Leaderboard, Battles 1v1/3v3, Demo Tracking, Hedge Fund Mode",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "deploy-commands": "node src/deploy-commands.js",
+    "db:migrate": "node db/migrate.js",
+    "db:seed": "node db/seeds/seed.js",
+    "test": "jest --runInBand",
+    "test:unit": "jest tests/unit --runInBand",
+    "test:integration": "jest tests/integration --runInBand"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "@discordjs/rest": "^2.3.0",
+    "discord-api-types": "^0.37.83",
+    "pg": "^8.11.3",
+    "ioredis": "^5.3.2",
+    "node-cron": "^3.0.3",
+    "axios": "^1.6.7",
+    "crypto-js": "^4.2.0",
+    "winston": "^3.11.0",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "dayjs": "^1.11.10",
+    "uuid": "^9.0.0",
+    "joi": "^17.12.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3",
+    "jest": "^29.7.0",
+    "jest-mock-extended": "^3.0.5"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.js"],
+    "coverageDirectory": "coverage"
+  }
+}
