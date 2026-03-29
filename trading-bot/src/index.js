@@ -1,6 +1,11 @@
 'use strict';
 
-// ── Load config first — fails fast on missing env vars ────
+/**
+ * Entry Point — Trading Competition Bot
+ * Bloc 4: adds monitoring init (Sentry), circuit breaker onStateChange hooks.
+ * REPLACES: src/index.js
+ */
+
 const config = require('../config');
 const { logger } = require('./utils/logger');
 
@@ -14,13 +19,23 @@ const {
   Partials,
   Collection,
 } = require('discord.js');
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
-const { testConnection: testDB } = require('../db/pool');
+const { testConnection: testDB }    = require('../db/pool');
 const { testConnection: testRedis } = require('./utils/redis');
-const { registerSchedulers } = require('./scheduler');
-const { startHTTPServer } = require('./http/server');
+const { registerSchedulers }        = require('./scheduler');
+const { startHTTPServer }           = require('./http/server');
+const { initSentry, reportCircuitBreakerChange } = require('./middleware/monitoring');
+const { breakers }                  = require('./middleware/circuitBreaker');
+
+// ── Sentry init (before anything else — captures startup errors too) ──
+initSentry();
+
+// ── Wire circuit breaker state-change → Discord alerts ────
+for (const breaker of Object.values(breakers)) {
+  breaker.onStateChange = reportCircuitBreakerChange;
+}
 
 // ── Discord Client ─────────────────────────────────────────
 const client = new Client({
@@ -28,19 +43,17 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMessageReactions,  // for season votes
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
 
-// ── Command Collection ─────────────────────────────────────
 client.commands = new Collection();
 
-// Load all commands recursively from src/commands/
+// ── Load commands recursively ──────────────────────────────
 function loadCommands(dir) {
-  const items = fs.readdirSync(dir, { withFileTypes: true });
-  for (const item of items) {
+  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, item.name);
     if (item.isDirectory()) {
       loadCommands(fullPath);
@@ -58,17 +71,12 @@ function loadCommands(dir) {
   }
 }
 
-// Load all event handlers from src/events/
+// ── Load event handlers ────────────────────────────────────
 function loadEvents(dir) {
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.js'));
-  for (const file of files) {
+  for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.js'))) {
     const event = require(path.join(dir, file));
     const handler = (...args) => event.execute(...args, client);
-    if (event.once) {
-      client.once(event.name, handler);
-    } else {
-      client.on(event.name, handler);
-    }
+    event.once ? client.once(event.name, handler) : client.on(event.name, handler);
     logger.debug(`Loaded event: ${event.name}`);
   }
 }
@@ -76,31 +84,25 @@ function loadEvents(dir) {
 // ── Boot Sequence ──────────────────────────────────────────
 async function main() {
   try {
-    // 1. Test DB connection
     logger.info('Connecting to PostgreSQL...');
     await testDB();
 
-    // 2. Test Redis connection
     logger.info('Connecting to Redis...');
     await testRedis();
 
-    // 3. Load commands
     logger.info('Loading commands...');
     loadCommands(path.join(__dirname, 'commands'));
     logger.info(`Loaded ${client.commands.size} commands`);
 
-    // 4. Load events
     logger.info('Loading events...');
     loadEvents(path.join(__dirname, 'events'));
 
-    // 5. Start HTTP server (EA webhook + screenshot uploads)
+    // HTTP server (EA webhook + screenshots)
     startHTTPServer();
 
-    // 6. Start Discord bot
     logger.info('Connecting to Discord...');
     await client.login(config.discord.token);
 
-    // 7. Register cron schedulers (after login so guild is available)
     client.once('ready', () => {
       registerSchedulers(client);
     });

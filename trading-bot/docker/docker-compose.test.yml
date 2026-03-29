@@ -1,0 +1,40 @@
+version: '3.9'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Trading Competition Bot — Test Compose
+# Spins up isolated PostgreSQL + Redis for integration tests.
+# Usage:
+#   docker-compose -f docker/docker-compose.test.yml up -d
+#   npm run test:integration
+#   docker-compose -f docker/docker-compose.test.yml down -v
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: trading-bot-test-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trading_bot_test
+    ports:
+      - "5433:5432"   # Non-standard port to avoid conflict with dev DB
+    tmpfs:
+      - /var/lib/postgresql/data   # In-memory for speed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: trading-bot-test-redis
+    ports:
+      - "6380:6379"   # Non-standard port
+    command: redis-server --save ""  # No persistence for tests
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
